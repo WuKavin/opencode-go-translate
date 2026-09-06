@@ -1,0 +1,21 @@
+{
+    "name": "opencode-go-translate",
+    "version": "1.0.0",
+    "private": true,
+    "description": "Bob 插件：使用你自己的 OpenCode Go API Key 调用大模型完成文本翻译（BYOK）",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/WuKavin/opencode-go-translate"
+    },
+    "scripts": {
+        "test": "node --test tests/*.test.js",
+        "jsc-check": "bash scripts/jsc-check.sh",
+        "package": "bash scripts/package.sh",
+        "checksum": "bash scripts/checksum.sh",
+        "live:test": "node scripts/live-test.js"
+    },
+    "engines": {
+        "node": ">=18"
+    }
+}
