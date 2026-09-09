@@ -36,20 +36,25 @@ function createMockServer() {
             } catch (e) {
                 /* ignore */
             }
-            requests.push({
+            const entry = {
                 method: req.method,
                 url: req.url,
                 headers: req.headers,
                 body: bodyJson,
-                bodyRaw
+                bodyRaw,
+                clientClosedEarly: false
+            };
+            requests.push(entry);
+            // 记录客户端是否在响应完成前断开连接（用于取消语义测试）
+            res.on('close', () => {
+                if (!res.writableEnded) {
+                    entry.clientClosedEarly = true;
+                }
             });
 
+            // P1 回归基线：/models 为公开端点，不校验 API Key，任何 Key（含假 Key）都返回 200。
+            // 因此鉴权检查必须由 pluginValidate 的第二阶段 Chat 请求完成。
             if (req.method === 'GET' && req.url.includes('/v1/models')) {
-                if (scenario === '401') {
-                    res.writeHead(401, { 'Content-Type': 'application/json' });
-                    res.end(JSON.stringify({ error: { message: 'invalid api key' } }));
-                    return;
-                }
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(
                     JSON.stringify({
@@ -88,6 +93,16 @@ function createMockServer() {
                             choices: [{ message: { role: 'assistant', content: '你好，世界（非流式）' } }]
                         })
                     );
+                    break;
+                case 'ok-json-delayed':
+                    setTimeout(() => {
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        res.end(
+                            JSON.stringify({
+                                choices: [{ message: { role: 'assistant', content: '你好，世界（延迟）' } }]
+                            })
+                        );
+                    }, 400);
                     break;
                 case 'incomplete-sse':
                     res.writeHead(200, { 'Content-Type': 'text/event-stream' });
@@ -325,29 +340,87 @@ test('Mock 集成：取消后无后续回调，服务端只收到一次请求', 
     });
 });
 
-test('Mock 集成：pluginValidate 通过并携带相同鉴权头', async () => {
+test('Mock 集成：pluginValidate 通过（/models 检查 + Chat 鉴权检查）并携带相同鉴权头', async () => {
     await withMock(async ({ mock, capture }) => {
+        mock.setScenario('ok-json');
         let result;
         require('../src/main.js').pluginValidate((r) => (result = r));
-        await new Promise((r) => setTimeout(r, 300));
+        await new Promise((r) => setTimeout(r, 600));
         assert.equal(result.result, true, JSON.stringify(result));
-        const sent = capture[0];
-        assert.equal(sent.method, 'GET');
-        assert.equal(sent.url, 'https://opencode.ai/zen/go/v1/models');
-        assert.ok(sent.header.Authorization.startsWith('Bearer '));
-        assert.ok(sent.header['x-opencode-session']);
-        assert.ok(sent.header['User-Agent'].includes('Bob-OpenCode-Go-Translate'));
+        assert.equal(capture.length, 2); // 两阶段：GET /models + POST chat/completions
+
+        const modelsReq = capture[0];
+        assert.equal(modelsReq.method, 'GET');
+        assert.equal(modelsReq.url, 'https://opencode.ai/zen/go/v1/models');
+        assert.ok(modelsReq.header.Authorization.startsWith('Bearer '));
+        assert.ok(modelsReq.header['x-opencode-session']);
+        assert.ok(modelsReq.header['User-Agent'].includes('Bob-OpenCode-Go-Translate'));
+
+        const chatReq = capture[1];
+        assert.equal(chatReq.method, 'POST');
+        assert.equal(chatReq.url, 'https://opencode.ai/zen/go/v1/chat/completions');
+        assert.equal(chatReq.body.model, 'deepseek-v4-flash');
+        assert.equal(chatReq.body.stream, false);
+        assert.ok(!('max_tokens' in chatReq.body));
+        assert.equal(chatReq.header['x-opencode-session'], modelsReq.header['x-opencode-session']);
         assert.equal(mock.requests[0].url, '/zen/go/v1/models');
+        assert.equal(mock.requests[1].url, '/zen/go/v1/chat/completions');
     });
 });
 
-test('Mock 集成：验证 401 → secretKey', async () => {
+// P1 回归：/models 为公开端点（假 Key 也 200），假 Key 必须在第二阶段 Chat 请求中被 401 拒绝
+test('Mock 集成：假 Key —— /models 200 但 Chat 请求 401 → 验证失败 secretKey', async () => {
     await withMock(async ({ mock }) => {
         mock.setScenario('401');
         let result;
         require('../src/main.js').pluginValidate((r) => (result = r));
-        await new Promise((r) => setTimeout(r, 300));
+        await new Promise((r) => setTimeout(r, 600));
         assert.equal(result.result, false);
         assert.equal(result.error.type, 'secretKey');
+    });
+});
+
+// 有效 Key + 无权模型（服务端拒绝该模型的 Chat 访问）→ 验证失败
+test('Mock 集成：有效 Key 但模型访问被拒（Chat 403）→ 验证失败 network', async () => {
+    await withMock(async ({ mock }) => {
+        mock.setScenario('403');
+        let result;
+        require('../src/main.js').pluginValidate((r) => (result = r));
+        await new Promise((r) => setTimeout(r, 600));
+        assert.equal(result.result, false);
+        assert.equal(result.error.type, 'network');
+        assert.ok(result.error.message.includes('访问被拒绝'));
+    });
+});
+
+// P2 回归：非流式取消必须终止底层 HTTP 请求（服务端观察到连接提前断开），且无 completion
+test('Mock 集成：非流式取消终止底层请求（服务端断开连接、无回调）', async () => {
+    await withMock(async ({ mock }) => {
+        mock.setScenario('ok-json-delayed');
+        global.$option.stream = 'disabled';
+        const signal = createSignal();
+        let completionCalls = 0;
+
+        require('../src/main.js').translate({
+            ...QUERY,
+            cancelSignal: signal,
+            onStream: () => {},
+            onCompletion: () => {
+                completionCalls += 1;
+            }
+        }, () => {});
+
+        setTimeout(() => signal.send(), 100);
+        await new Promise((r) => setTimeout(r, 800)); // 超过 server 400ms 延迟，若未取消早已回调
+
+        assert.equal(completionCalls, 0, '取消后不应回调 onCompletion');
+        assert.equal(mock.requests.length, 1, '不应有重试');
+        assert.equal(
+            mock.requests[0].clientClosedEarly,
+            true,
+            '服务端应观察到客户端在响应完成前断开连接（底层请求被终止）'
+        );
+        // disposable 释放由 translate.test.js 的 scripted 取消测试验证
+        // （此处 signal 同时被模拟的 Bob 传输层订阅，订阅计数不归插件管理）
     });
 });

@@ -1,6 +1,6 @@
 {
     "name": "opencode-go-translate",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "private": true,
     "description": "Bob 插件：使用你自己的 OpenCode Go API Key 调用大模型完成文本翻译（BYOK）",
     "license": "MIT",

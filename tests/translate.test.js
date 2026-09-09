@@ -133,6 +133,23 @@ test('translate：非流式成功，reasoning_content 不混入', async () => {
     clearEnv();
 });
 
+// P2 回归：非流式请求也必须把 cancelSignal 传给 $http.request，取消时终止底层请求
+test('translate：非流式请求携带 cancelSignal（与流式一致）', async () => {
+    const signal = createSignal();
+    const seen = [];
+    setup({ stream: 'disabled' }, (opts) => {
+        seen.push(opts);
+        opts.handler({
+            data: { choices: [{ message: { role: 'assistant', content: 'ok' } }] },
+            response: { statusCode: 200 }
+        });
+    });
+
+    await translateOnce({ ...QUERY, cancelSignal: signal });
+    assert.equal(seen[0].cancelSignal, signal);
+    clearEnv();
+});
+
 test('translate：流式成功，onStream 累计文本，最终结果完整', async () => {
     const streams = [];
     setup({}, (opts, isStream) => {
@@ -481,25 +498,58 @@ test('pluginValidate：缺 Key → result false + secretKey，不发起请求', 
     clearEnv();
 });
 
-test('pluginValidate：/models 成功且模型存在 → result true', async () => {
-    let seenOpts = null;
+test('pluginValidate：两阶段通过（/models + 最小 Chat 鉴权请求）', async () => {
+    const seen = [];
     const http = createScriptedHttp((opts) => {
-        seenOpts = opts;
-        opts.handler({
-            data: { object: 'list', data: [{ id: 'deepseek-v4-flash' }, { id: 'glm-5.3' }] },
-            response: { statusCode: 200 }
-        });
+        seen.push(opts);
+        if (opts.method === 'GET') {
+            opts.handler({
+                data: { object: 'list', data: [{ id: 'deepseek-v4-flash' }, { id: 'glm-5.3' }] },
+                response: { statusCode: 200 }
+            });
+        } else {
+            opts.handler({
+                data: { choices: [{ message: { role: 'assistant', content: 'OK' } }] },
+                response: { statusCode: 200 }
+            });
+        }
     });
     installEnv({ option: defaultOption(), http });
     let res;
     require('../src/main.js').pluginValidate((r) => (res = r));
     assert.equal(res.result, true);
-    assert.equal(seenOpts.method, 'GET');
-    assert.equal(seenOpts.url, 'https://opencode.ai/zen/go/v1/models');
-    assert.equal(seenOpts.header.Accept, 'application/json');
-    assert.ok(seenOpts.header.Authorization.startsWith('Bearer '));
-    assert.ok(seenOpts.header['x-opencode-session']);
-    assert.ok(seenOpts.header['User-Agent'].includes('Bob-OpenCode-Go-Translate/1.0.0'));
+    assert.equal(seen.length, 2);
+    assert.equal(seen[0].method, 'GET');
+    assert.equal(seen[0].url, 'https://opencode.ai/zen/go/v1/models');
+    assert.equal(seen[1].method, 'POST');
+    assert.equal(seen[1].url, 'https://opencode.ai/zen/go/v1/chat/completions');
+    assert.equal(seen[1].body.model, 'deepseek-v4-flash');
+    assert.equal(seen[1].body.stream, false);
+    assert.ok(!('max_tokens' in seen[1].body));
+    assert.equal(seen[1].header['x-opencode-session'], seen[0].header['x-opencode-session']);
+    clearEnv();
+});
+
+// P1 回归：/models 为公开端点（假 Key 也返回 200），假 Key 必须在第二阶段 Chat 请求被 401 拒绝
+test('pluginValidate：假 Key —— /models 通过但 Chat 401 → secretKey', async () => {
+    const http = createScriptedHttp((opts) => {
+        if (opts.method === 'GET') {
+            opts.handler({
+                data: { object: 'list', data: [{ id: 'deepseek-v4-flash' }] },
+                response: { statusCode: 200 }
+            });
+        } else {
+            opts.handler({
+                data: { error: { message: 'invalid api key' } },
+                response: { statusCode: 401 }
+            });
+        }
+    });
+    installEnv({ option: defaultOption(), http });
+    let res;
+    require('../src/main.js').pluginValidate((r) => (res = r));
+    assert.equal(res.result, false);
+    assert.equal(res.error.type, 'secretKey');
     clearEnv();
 });
 

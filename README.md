@@ -18,7 +18,7 @@
 1. 在 [https://opencode.ai/auth](https://opencode.ai/auth) 登录并订阅 Go，复制 API Key
 2. 双击 `opencode-go-translate.bobplugin` 安装
 3. 打开 Bob 偏好设置 → 插件 → OpenCode Go 翻译，粘贴 API Key
-4. 点击「验证」确认配置可用
+4. 点击「验证」确认配置可用（验证会先检查模型列表，再发起一次最小真实翻译请求以确认 API Key 有效，消耗少量额度）
 
 ## 配置项
 

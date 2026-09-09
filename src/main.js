@@ -210,7 +210,7 @@ function startTranslation(query, st, finish) {
     if (opts.stream === 'enabled') {
         doStreamRequest(query, st, finish, opts, headers, body, resolved, http);
     } else {
-        doNonStreamRequest(st, finish, opts, headers, body, resolved, http);
+        doNonStreamRequest(query, st, finish, opts, headers, body, resolved, http);
     }
 }
 
@@ -220,13 +220,14 @@ function statusOf(resp) {
         : 0;
 }
 
-function doNonStreamRequest(st, finish, opts, headers, body, resolved, http) {
+function doNonStreamRequest(query, st, finish, opts, headers, body, resolved, http) {
     http.request({
         method: 'POST',
         url: request.CHAT_COMPLETIONS_URL,
         header: headers,
         body: body,
         timeout: opts.requestTimeout,
+        cancelSignal: query ? query.cancelSignal : undefined, // 与流式路径保持一致：取消时终止底层请求
         handler: function (resp) {
             if (st.finished) {
                 return; // 已取消或已终结
@@ -421,7 +422,12 @@ function doStreamRequest(query, st, finish, opts, headers, body, resolved, http)
 
 /**
  * 插件验证（Bob 偏好设置中的“验证”按钮）。
- * 验证顺序：API Key → 模型 allowlist → sessionId 格式 → disabled 组合 → GET /models → 确认模型存在。
+ * 两阶段验证：
+ *   阶段一 GET /models —— 仅作模型存在性与协议检查（该端点当前不校验 API Key，
+ *   带无效 Key 也会返回 200，实测 2026-09-09），不能用于确认鉴权；
+ *   阶段二 POST /chat/completions —— 发送最小真实请求确认 API Key 与模型访问权限，
+ *   该请求会消耗少量额度（不附加 max_tokens 等未确认字段，响应内容不参与判定）。
+ * 验证顺序：API Key → 模型 allowlist → sessionId 格式 → disabled 组合 → /models 检查 → Chat 请求鉴权检查。
  * 注意：/models 返回模型存在不代表该模型支持 Chat Completions，transport 仍以静态映射为准。
  */
 function pluginValidate(completion) {
@@ -452,15 +458,18 @@ function pluginValidate(completion) {
         return;
     }
 
+    var headers = request.buildHeaders(
+        opts.apiKey,
+        sessionResult.sessionId,
+        opts.pluginVersion,
+        'application/json'
+    );
+
+    // 阶段一：模型存在性与协议检查（不做鉴权判定）
     http.request({
         method: 'GET',
         url: request.MODELS_URL,
-        header: request.buildHeaders(
-            opts.apiKey,
-            sessionResult.sessionId,
-            opts.pluginVersion,
-            'application/json'
-        ),
+        header: headers,
         timeout: opts.requestTimeout,
         handler: function (resp) {
             if (resp && resp.error) {
@@ -494,6 +503,36 @@ function pluginValidate(completion) {
                 fail(errors.paramError(
                     '所选模型「' + opts.model + '」不在服务端模型列表中。OpenCode Go 模型可能已变化，请更新插件或更换模型。'
                 ));
+                return;
+            }
+            validateKeyWithChatRequest(http, opts, sessionResult.sessionId, fail, completion);
+        }
+    });
+}
+
+/**
+ * 阶段二：最小 Chat Completions 请求验证 API Key（假 Key 在此才会被 401 拒绝）。
+ */
+function validateKeyWithChatRequest(http, opts, sessionId, fail, completion) {
+    http.request({
+        method: 'POST',
+        url: request.CHAT_COMPLETIONS_URL,
+        header: request.buildHeaders(
+            opts.apiKey,
+            sessionId,
+            opts.pluginVersion,
+            'application/json'
+        ),
+        body: request.buildValidateRequestBody(opts.model),
+        timeout: opts.requestTimeout,
+        handler: function (resp) {
+            if (resp && resp.error) {
+                fail(errors.networkError('网络请求失败：' + errors.redact(resp.error.message || '')));
+                return;
+            }
+            var status = statusOf(resp);
+            if (status < 200 || status >= 300) {
+                fail(request.mapHttpError(status, errors.summarizePayload(resp ? resp.data : null)));
                 return;
             }
             completion({ result: true });

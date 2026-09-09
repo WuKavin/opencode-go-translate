@@ -1,6 +1,6 @@
 {
     "identifier": "com.local.bob.translate.opencodogo",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "category": "translate",
     "name": "OpenCode Go 翻译",
     "summary": "使用你自己的 OpenCode Go API Key（BYOK）调用大模型完成文本翻译。仅限账户持有人本机使用。",
