@@ -4,39 +4,23 @@
  */
 
 var errors = require('./errors.js');
+var models = require('./models.js');
 
 /**
  * OpenCode Go 中使用 OpenAI Chat Completions 协议的模型。
- * 来源：https://opencode.ai/docs/go/#endpoints（核对于 2026-09-06）
- * 注意：deepseek-v4-flash-vision-exp 也走 Chat Completions，但 MVP 不支持图片，不纳入菜单。
+ * 协议映射、核对日期与菜单统一维护于 models.js。
  */
-var CHAT_COMPLETIONS_MODELS = [
-    'deepseek-v4-flash',
-    'deepseek-v4-pro',
-    'glm-5.3-flash',
-    'glm-5.3',
-    'glm-5.2',
-    'glm-5.1',
-    'kimi-k3',
-    'kimi-k2.7-code',
-    'kimi-k2.6',
-    'longcat-2.0',
-    'mimo-v2.5',
-    'mimo-v2.5-pro',
-    'hy4-preview',
-    'hy3',
-    'omen-alpha'
-];
+var CHAT_COMPLETIONS_MODELS = models.ids;
 
 /**
  * 实验性关闭思考（reasoning_effort: "none"）仅允许的模型。
  * 依据 OpenCode 仓库 Issue（非正式 API 契约）：
  * https://github.com/anomalyco/opencode/issues/46178
  */
-var REASONING_DISABLE_MODELS = ['deepseek-v4-flash', 'deepseek-v4-pro'];
+var REASONING_DISABLE_MODELS = models.reasoningDisableIds;
 
 var DEFAULTS = {
-    model: 'deepseek-v4-flash',
+    model: models.defaultModel,
     reasoningMode: 'model_default',
     stream: 'enabled',
     requestTimeout: 60
@@ -53,7 +37,7 @@ function isReasoningDisableModel(model) {
 }
 
 /**
- * 从 $option 读取配置。未设置或非法的菜单值回退为默认值。
+ * 未设置时使用默认值；旧模型或非法菜单值保留到校验阶段，禁止静默切换模型。
  */
 function readOptions(option, pluginVersion) {
     var o = option || {};
@@ -88,6 +72,12 @@ function validateConfig(config, rawUserSessionId) {
     if (!config.apiKey || (typeof config.apiKey === 'string' && config.apiKey.trim() === '')) {
         return errors.secretKeyError('未设置 API Key。请在插件设置中填写 OpenCode Go API Key（https://opencode.ai/auth 获取）。');
     }
+    if (config.model === 'deepseek-v4-flash') {
+        return errors.paramError('旧模型 deepseek-v4-flash 已不在当前 Go 模型列表中。请在插件设置中选择 DeepSeek V4.1 Flash，并将思考模式设为「使用模型默认行为」。插件不会自动切换模型。');
+    }
+    if (['glm-5.1', 'kimi-k2.6', 'omen-alpha'].indexOf(config.model) >= 0) {
+        return errors.paramError('所选旧模型「' + config.model + '」仍在模型列表中，但当前 Go 官方文档未确认其协议映射，本版本暂不支持。请手动选择菜单中的模型。');
+    }
     if (!isChatCompletionsModel(config.model)) {
         return errors.paramError(
             '所选模型「' + config.model + '」不属于 Chat Completions 模型。请在插件设置中选择受支持的模型。'
@@ -98,8 +88,8 @@ function validateConfig(config, rawUserSessionId) {
     }
     if (config.reasoningMode === 'disabled' && !isReasoningDisableModel(config.model)) {
         return errors.paramError(
-            '「请求关闭思考」仅支持 DeepSeek V4 系列（deepseek-v4-flash / deepseek-v4-pro），当前模型为「' +
-            config.model + '」。请在插件设置中调整。'
+            '「请求关闭思考」当前仅对 DeepSeek V4 Pro 保留实验性支持，DeepSeek V4.1 Flash 等模型尚未确认该参数。当前模型为「' +
+            config.model + '」，请将思考模式设为「使用模型默认行为」。'
         );
     }
     if (config.stream !== 'enabled' && config.stream !== 'disabled') {

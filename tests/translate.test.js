@@ -17,7 +17,7 @@ const {
 function defaultOption(overrides) {
     return {
         apiKey: 'sk-live-test-key-9876543210abcdef',
-        model: 'deepseek-v4-flash',
+        model: 'deepseek-v4.1-flash',
         reasoningMode: 'model_default',
         stream: 'enabled',
         requestTimeout: '60',
@@ -60,6 +60,56 @@ test('translate：未配置 API Key → secretKey，且不发起 HTTP 请求', a
     assert.equal(env.http.calls.length, 0);
     clearEnv();
 });
+
+test('translate / pluginValidate：旧 Flash 提示迁移，不请求 API、不自动回放', async () => {
+    const env = setup({ model: 'deepseek-v4-flash' });
+    try {
+        const result = await translateOnce(QUERY);
+        assert.equal(result.error.type, 'param');
+        assert.match(result.error.message, /V4\.1 Flash/);
+        let validation;
+        require('../src/main.js').pluginValidate((value) => { validation = value; });
+        assert.equal(validation.result, false);
+        assert.equal(validation.error.type, 'param');
+        assert.equal(env.http.calls.length, 0);
+    } finally {
+        clearEnv();
+    }
+});
+
+test('translate：V4.1 disabled 明确拒绝，不能发出未经确认参数', async () => {
+    const env = setup({ reasoningMode: 'disabled' });
+    try {
+        const result = await translateOnce(QUERY);
+        assert.equal(result.error.type, 'param');
+        assert.match(result.error.message, /模型默认行为/);
+        assert.equal(env.http.calls.length, 0);
+    } finally {
+        clearEnv();
+    }
+});
+
+for (const model of ['deepseek-v4.1-flash', 'mimo-v2.6-flash', 'mimo-v2.6-pro', 'step-5-preview']) {
+    for (const stream of ['enabled', 'disabled']) {
+        test('translate：更新模型与新端点 ' + model + ' / ' + stream, async () => {
+            const env = setup({ model, stream }, (opts, isStream) => {
+                assert.equal(opts.url, 'https://opencode.ai/inference/go/openai/v1/chat/completions');
+                assert.equal(opts.body.model, model);
+                assert.equal(opts.body.stream, stream === 'enabled');
+                assert.ok(!('reasoning_effort' in opts.body));
+                if (isStream) deliverStream(opts, sseChunks(['译文'], 'stop'));
+                else opts.handler({ data: { choices: [{ message: { content: '译文' } }] }, response: { statusCode: 200 } });
+            });
+            try {
+                const result = await translateOnce(QUERY);
+                assert.deepEqual(result.result.toParagraphs, ['译文']);
+                assert.equal(env.http.calls.length, 1);
+            } finally {
+                clearEnv();
+            }
+        });
+    }
+}
 
 test('translate：disabled + 非 DeepSeek 模型 → param', async () => {
     setup({ model: 'glm-5.3-flash', reasoningMode: 'disabled' });
@@ -193,10 +243,10 @@ test('translate：流式请求 headers 正确（session 稳定、UA 正确）', 
     assert.equal(seen.length, 2);
     assert.equal(seen[0].header['x-opencode-session'], seen[1].header['x-opencode-session']);
     assert.match(seen[0].header['x-opencode-session'], /^[A-Za-z0-9._:-]{8,128}$/);
-    assert.equal(seen[0].header['User-Agent'], 'Bob-OpenCode-Go-Translate/1.0.0 (Bob Plugin; macOS)');
+    assert.equal(seen[0].header['User-Agent'], 'Bob-OpenCode-Go-Translate/' + require('../src/info.json').version + ' (Bob Plugin; macOS)');
     assert.equal(seen[0].header.Authorization, 'Bearer ' + defaultOption().apiKey);
     assert.equal(seen[0].header.Accept, 'text/event-stream');
-    assert.equal(seen[0].url, 'https://opencode.ai/zen/go/v1/chat/completions');
+    assert.equal(seen[0].url, 'https://opencode.ai/inference/go/openai/v1/chat/completions');
     clearEnv();
 });
 
@@ -431,7 +481,7 @@ test('translate：请求体携带模型与会话，且默认不发送未确认�
 
 test('translate：disabled 模式请求体含 reasoning_effort none（仅 DeepSeek V4）', async () => {
     const seen = [];
-    setup({ reasoningMode: 'disabled' }, (opts) => {
+    setup({ model: 'deepseek-v4-pro', reasoningMode: 'disabled' }, (opts) => {
         seen.push(opts);
         deliverStream(opts, sseChunks(['好'], 'stop'));
     });
@@ -504,7 +554,7 @@ test('pluginValidate：两阶段通过（/models + 最小 Chat 鉴权请求）',
         seen.push(opts);
         if (opts.method === 'GET') {
             opts.handler({
-                data: { object: 'list', data: [{ id: 'deepseek-v4-flash' }, { id: 'glm-5.3' }] },
+                data: { object: 'list', data: [{ id: 'deepseek-v4.1-flash' }, { id: 'glm-5.3' }] },
                 response: { statusCode: 200 }
             });
         } else {
@@ -520,10 +570,10 @@ test('pluginValidate：两阶段通过（/models + 最小 Chat 鉴权请求）',
     assert.equal(res.result, true);
     assert.equal(seen.length, 2);
     assert.equal(seen[0].method, 'GET');
-    assert.equal(seen[0].url, 'https://opencode.ai/zen/go/v1/models');
+    assert.equal(seen[0].url, 'https://opencode.ai/inference/go/v1/models');
     assert.equal(seen[1].method, 'POST');
-    assert.equal(seen[1].url, 'https://opencode.ai/zen/go/v1/chat/completions');
-    assert.equal(seen[1].body.model, 'deepseek-v4-flash');
+    assert.equal(seen[1].url, 'https://opencode.ai/inference/go/openai/v1/chat/completions');
+    assert.equal(seen[1].body.model, 'deepseek-v4.1-flash');
     assert.equal(seen[1].body.stream, false);
     assert.ok(!('max_tokens' in seen[1].body));
     assert.equal(seen[1].header['x-opencode-session'], seen[0].header['x-opencode-session']);
@@ -535,7 +585,7 @@ test('pluginValidate：假 Key —— /models 通过但 Chat 401 → secretKey',
     const http = createScriptedHttp((opts) => {
         if (opts.method === 'GET') {
             opts.handler({
-                data: { object: 'list', data: [{ id: 'deepseek-v4-flash' }] },
+                data: { object: 'list', data: [{ id: 'deepseek-v4.1-flash' }] },
                 response: { statusCode: 200 }
             });
         } else {

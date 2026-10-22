@@ -6,9 +6,10 @@
  */
 
 var errors = require('./errors.js');
+var models = require('./models.js');
 
-var CHAT_COMPLETIONS_URL = 'https://opencode.ai/zen/go/v1/chat/completions';
-var MODELS_URL = 'https://opencode.ai/zen/go/v1/models';
+var CHAT_COMPLETIONS_URL = models.chatUrl;
+var MODELS_URL = models.modelsUrl;
 
 var SYSTEM_PROMPT = [
     'You are a translation engine inside a translation app.',

@@ -8,7 +8,7 @@ const errors = require('../src/lib/errors.js');
 function baseConfig(overrides) {
     return {
         apiKey: 'sk-test-key-1234567890',
-        model: 'deepseek-v4-flash',
+        model: 'deepseek-v4.1-flash',
         reasoningMode: 'model_default',
         stream: 'enabled',
         requestTimeout: 60,
@@ -20,7 +20,7 @@ function baseConfig(overrides) {
 
 test('readOptions：未配置时使用默认值', () => {
     const opts = config.readOptions({}, '1.0.0');
-    assert.equal(opts.model, 'deepseek-v4-flash');
+    assert.equal(opts.model, 'deepseek-v4.1-flash');
     assert.equal(opts.reasoningMode, 'model_default');
     assert.equal(opts.stream, 'enabled');
     assert.equal(opts.requestTimeout, 60);
@@ -91,8 +91,8 @@ test('validateConfig：Chat Completions 全部 allowlist 模型通过', () => {
     }
 });
 
-test('validateConfig：disabled 仅 DeepSeek V4 通过', () => {
-    assert.equal(config.validateConfig(baseConfig({ reasoningMode: 'disabled', model: 'deepseek-v4-flash' })), null);
+test('validateConfig：disabled 仅保留 DeepSeek V4 Pro，不推断 V4.1 支持', () => {
+    assert.equal(config.validateConfig(baseConfig({ reasoningMode: 'disabled', model: 'deepseek-v4.1-flash' })).type, 'param');
     assert.equal(config.validateConfig(baseConfig({ reasoningMode: 'disabled', model: 'deepseek-v4-pro' })), null);
     const err = config.validateConfig(baseConfig({ reasoningMode: 'disabled', model: 'glm-5.3-flash' }));
     assert.ok(err);
@@ -130,7 +130,9 @@ test('validateConfig：合法 sessionId 留空均可', () => {
 
 test('isChatCompletionsModel / isReasoningDisableModel', () => {
     assert.equal(config.isChatCompletionsModel('deepseek-v4-flash-vision-exp'), false);
-    assert.equal(config.isReasoningDisableModel('deepseek-v4-flash'), true);
+    assert.equal(config.isReasoningDisableModel('deepseek-v4-flash'), false);
+    assert.equal(config.isReasoningDisableModel('deepseek-v4.1-flash'), false);
+    assert.equal(config.isReasoningDisableModel('deepseek-v4-pro'), true);
     assert.equal(config.isReasoningDisableModel('glm-5.3'), false);
 });
 

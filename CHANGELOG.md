@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.0 (2026-10-22)
+
+- 更新为 Go 当前 `/inference/go/openai/v1/chat/completions` 与 `/inference/go/v1/models`。
+- 默认模型改为 DeepSeek V4.1 Flash，新增 MiMo V2.6 Flash / Pro、Step 5 Preview。
+- 旧 Flash 配置明确提示手动迁移；GLM 5.1、Kimi K2.6、Omen Alpha 因当前 Go 协议未确认暂从菜单移除，不宣称下线。
+- V4.1 Flash 不继承旧 V4 的实验性关闭思考参数；disabled 暂仅支持 V4 Pro。
+- 新增统一模型目录、菜单/版本一致性测试、只读上游变化检查；Mock 严格校验新 API 路径。
+- 更新 Live Test 默认模型与观测方式，不对 V4.1 发送未经确认参数、不将非空译文误作语义完整。
+- 打包限定运行文件，保留旧安装包备份，不再删除整个 dist 目录。
+- 应用户远程下载需要，先推送 GitHub 并提供预发布安装包；Bob 实机验收和真实 Key 测试尚未完成，appcast 待验收后配置。
+
 ## 1.0.1 (2026-09-09)
 
 修复（Code Review 反馈）：

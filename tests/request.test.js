@@ -24,13 +24,13 @@ test('buildHeaders：包含鉴权、session、UA 与正确的 Accept', () => {
 });
 
 test('URL 常量：固定 https://opencode.ai 地址', () => {
-    assert.equal(request.CHAT_COMPLETIONS_URL, 'https://opencode.ai/zen/go/v1/chat/completions');
-    assert.equal(request.MODELS_URL, 'https://opencode.ai/zen/go/v1/models');
+    assert.equal(request.CHAT_COMPLETIONS_URL, 'https://opencode.ai/inference/go/openai/v1/chat/completions');
+    assert.equal(request.MODELS_URL, 'https://opencode.ai/inference/go/v1/models');
 });
 
 test('buildRequestBody：基础结构正确，模型 ID 不加前缀', () => {
-    const body = request.buildRequestBody('deepseek-v4-flash', 'English', 'Simplified Chinese', 'hello', 'enabled', 'model_default');
-    assert.equal(body.model, 'deepseek-v4-flash');
+    const body = request.buildRequestBody('deepseek-v4.1-flash', 'English', 'Simplified Chinese', 'hello', 'enabled', 'model_default');
+    assert.equal(body.model, 'deepseek-v4.1-flash');
     assert.ok(!body.model.includes('opencode-go/'));
     assert.equal(body.stream, true);
     assert.equal(body.messages.length, 2);

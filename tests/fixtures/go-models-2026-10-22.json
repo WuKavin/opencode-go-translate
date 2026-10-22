@@ -1,0 +1,22 @@
+{
+    "checkedAt": "2026-10-22",
+    "modelsUrl": "https://opencode.ai/inference/go/v1/models",
+    "docsUrl": "https://opencode.ai/v2/docs/console/go/",
+    "observedIds": [
+        "deepseek-v4.1-flash", "deepseek-v4-pro", "glm-5.1", "glm-5.2", "glm-5.3",
+        "grok-4.6", "grok-4.7", "muse-spark-1.2-contributor", "muse-spark-1.3-contributor",
+        "glm-5.3-flash", "omen-alpha", "gpt-5.6-luna", "gpt-6-luna", "claude-haiku-5-5",
+        "hy3", "hy4-preview", "kimi-k2.6", "kimi-k2.7-code", "kimi-k3", "mimo-v2.5",
+        "mimo-v2.6-flash", "mimo-v2.5-pro", "mimo-v2.6-pro", "minimax-m2.5", "minimax-m2.7",
+        "gemini-4-argon-contributor", "minimax-m3", "minimax-m3.1-flash-free", "longcat-2.0",
+        "step-5-preview", "beam-free", "qwen3.6-plus", "qwen3.7-max", "qwen3.8-max",
+        "qwen3.8-flash", "qwen3.7-plus"
+    ],
+    "documentedChatIds": [
+        "glm-5.3-flash", "glm-5.3", "glm-5.2", "kimi-k3", "kimi-k2.7-code", "longcat-2.0",
+        "deepseek-v4.1-flash", "deepseek-v4-pro", "mimo-v2.6-flash", "mimo-v2.6-pro",
+        "mimo-v2.5", "mimo-v2.5-pro", "hy4-preview", "hy3", "minimax-m3.1-flash-free",
+        "longcat-2.5-preview-free", "step-5-preview", "beam-free"
+    ],
+    "excludedChatIds": ["minimax-m3.1-flash-free", "longcat-2.5-preview-free", "beam-free"]
+}

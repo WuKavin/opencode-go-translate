@@ -54,14 +54,20 @@ function createMockServer() {
 
             // P1 回归基线：/models 为公开端点，不校验 API Key，任何 Key（含假 Key）都返回 200。
             // 因此鉴权检查必须由 pluginValidate 的第二阶段 Chat 请求完成。
-            if (req.method === 'GET' && req.url.includes('/v1/models')) {
+            if (req.method === 'GET' && req.url === '/inference/go/v1/models') {
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(
                     JSON.stringify({
                         object: 'list',
-                        data: [{ id: 'deepseek-v4-flash' }, { id: 'glm-5.3-flash' }]
+                        data: [{ id: 'deepseek-v4.1-flash' }, { id: 'glm-5.3-flash' }]
                     })
                 );
+                return;
+            }
+
+            if (req.method !== 'POST' || req.url !== '/inference/go/openai/v1/chat/completions') {
+                res.writeHead(404);
+                res.end();
                 return;
             }
 
@@ -174,7 +180,7 @@ async function withMock(fn) {
     installEnv({
         option: {
             apiKey: 'sk-mock-integration-key-1234567890',
-            model: 'deepseek-v4-flash',
+            model: 'deepseek-v4.1-flash',
             reasoningMode: 'model_default',
             stream: 'enabled',
             requestTimeout: '60',
@@ -202,10 +208,10 @@ test('Mock 集成：流式请求携带 Authorization / x-opencode-session / User
 
         const sent = capture[0];
         assert.equal(sent.method, 'POST');
-        assert.equal(sent.url, 'https://opencode.ai/zen/go/v1/chat/completions');
+        assert.equal(sent.url, 'https://opencode.ai/inference/go/openai/v1/chat/completions');
         assert.equal(sent.header.Authorization, 'Bearer sk-mock-integration-key-1234567890');
         assert.match(sent.header['x-opencode-session'], /^[A-Za-z0-9._:-]{8,128}$/);
-        assert.equal(sent.header['User-Agent'], 'Bob-OpenCode-Go-Translate/1.0.0 (Bob Plugin; macOS)');
+        assert.equal(sent.header['User-Agent'], 'Bob-OpenCode-Go-Translate/' + require('../src/info.json').version + ' (Bob Plugin; macOS)');
         assert.equal(sent.header.Accept, 'text/event-stream');
         assert.equal(sent.header['Content-Type'], 'application/json');
 
@@ -214,7 +220,7 @@ test('Mock 集成：流式请求携带 Authorization / x-opencode-session / User
         assert.equal(received.headers['x-opencode-session'], sent.header['x-opencode-session']);
         assert.equal(received.headers['user-agent'], sent.header['User-Agent']);
         assert.equal(received.headers.accept, 'text/event-stream');
-        assert.equal(received.body.model, 'deepseek-v4-flash');
+        assert.equal(received.body.model, 'deepseek-v4.1-flash');
         assert.equal(received.body.stream, true);
     });
 });
@@ -351,20 +357,20 @@ test('Mock 集成：pluginValidate 通过（/models 检查 + Chat 鉴权检查�
 
         const modelsReq = capture[0];
         assert.equal(modelsReq.method, 'GET');
-        assert.equal(modelsReq.url, 'https://opencode.ai/zen/go/v1/models');
+        assert.equal(modelsReq.url, 'https://opencode.ai/inference/go/v1/models');
         assert.ok(modelsReq.header.Authorization.startsWith('Bearer '));
         assert.ok(modelsReq.header['x-opencode-session']);
         assert.ok(modelsReq.header['User-Agent'].includes('Bob-OpenCode-Go-Translate'));
 
         const chatReq = capture[1];
         assert.equal(chatReq.method, 'POST');
-        assert.equal(chatReq.url, 'https://opencode.ai/zen/go/v1/chat/completions');
-        assert.equal(chatReq.body.model, 'deepseek-v4-flash');
+        assert.equal(chatReq.url, 'https://opencode.ai/inference/go/openai/v1/chat/completions');
+        assert.equal(chatReq.body.model, 'deepseek-v4.1-flash');
         assert.equal(chatReq.body.stream, false);
         assert.ok(!('max_tokens' in chatReq.body));
         assert.equal(chatReq.header['x-opencode-session'], modelsReq.header['x-opencode-session']);
-        assert.equal(mock.requests[0].url, '/zen/go/v1/models');
-        assert.equal(mock.requests[1].url, '/zen/go/v1/chat/completions');
+        assert.equal(mock.requests[0].url, '/inference/go/v1/models');
+        assert.equal(mock.requests[1].url, '/inference/go/openai/v1/chat/completions');
     });
 });
 

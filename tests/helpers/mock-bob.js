@@ -216,7 +216,7 @@ function createTransportHttp({ targetBase, capture }) {
 
 function installEnv({ option, http, file, log }) {
     global.$option = option;
-    global.$info = { version: '1.0.0' };
+    global.$info = require('../../src/info.json');
     global.$log = log || createLog();
     global.$http = http;
     global.$file = file;
