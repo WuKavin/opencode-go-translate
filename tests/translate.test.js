@@ -77,17 +77,57 @@ test('translate / pluginValidate：旧 Flash 提示迁移，不请求 API、不�
     }
 });
 
-test('translate：V4.1 disabled 明确拒绝，不能发出未经确认参数', async () => {
-    const env = setup({ reasoningMode: 'disabled' });
+test('translate：V4.1 disabled 显式发送实验参数，不混入 reasoning 字段', async () => {
+    const env = setup({ reasoningMode: 'disabled' }, (opts) => {
+        assert.equal(opts.body.reasoning_effort, 'none');
+        assert.ok(!('thinking' in opts.body));
+        deliverStream(opts, [
+            'data: {"choices":[{"delta":{"reasoning_content":"模拟推理，不应显示"}}]}\n\n',
+            ...sseChunks(['译文'], 'stop')
+        ]);
+    });
     try {
         const result = await translateOnce(QUERY);
-        assert.equal(result.error.type, 'param');
-        assert.match(result.error.message, /模型默认行为/);
-        assert.equal(env.http.calls.length, 0);
+        assert.deepEqual(result.result.toParagraphs, ['译文']);
+        assert.equal(env.http.calls.length, 1);
     } finally {
         clearEnv();
     }
 });
+
+test('translate：V4.1 非流式 disabled 发出 none，只返回译文', async () => {
+    const env = setup({ stream: 'disabled', reasoningMode: 'disabled' }, (opts) => {
+        assert.equal(opts.body.reasoning_effort, 'none');
+        assert.ok(!('thinking' in opts.body));
+        opts.handler({ response: { statusCode: 200 }, data: {
+            choices: [{ message: { content: '译文', reasoning_content: '不能显示的模拟推理' } }]
+        } });
+    });
+    try {
+        const result = await translateOnce(QUERY);
+        assert.deepEqual(result.result.toParagraphs, ['译文']);
+        assert.equal(env.http.calls.length, 1);
+    } finally {
+        clearEnv();
+    }
+});
+
+for (const stream of ['enabled', 'disabled']) {
+    test('translate：实验参数被 400 拒绝后不重试、不降级 / ' + stream, async () => {
+        const env = setup({ stream, reasoningMode: 'disabled' }, (opts) => {
+            opts.handler({ response: { statusCode: 400 }, data: { error: { message: 'reasoning_effort rejected' } } });
+        });
+        try {
+            const result = await translateOnce(QUERY);
+            assert.equal(result.error.type, 'network');
+            assert.match(result.error.message, /400/);
+            assert.equal(env.http.calls.length, 1);
+            assert.equal(env.option.reasoningMode, 'disabled');
+        } finally {
+            clearEnv();
+        }
+    });
+}
 
 for (const model of ['deepseek-v4.1-flash', 'mimo-v2.6-flash', 'mimo-v2.6-pro', 'step-5-preview']) {
     for (const stream of ['enabled', 'disabled']) {
@@ -638,4 +678,74 @@ test('pluginValidate：401 → secretKey', async () => {
     require('../src/main.js').pluginValidate((r) => (res = r));
     assert.equal(res.error.type, 'secretKey');
     clearEnv();
+});
+
+for (const model of ['deepseek-v4.1-flash', 'deepseek-v4-pro']) {
+    for (const reasoningMode of ['disabled', 'model_default']) {
+        test('pluginValidate：校验选中的实验参数 / ' + model + ' / ' + reasoningMode, () => {
+            const env = setup({ model, reasoningMode }, (opts) => {
+                opts.handler({ response: { statusCode: 200 }, data: opts.method === 'GET'
+                    ? { object: 'list', data: [{ id: model }] }
+                    : { choices: [{ message: { content: 'OK' } }] }
+                });
+            });
+            try {
+                let result;
+                require('../src/main.js').pluginValidate((value) => { result = value; });
+                assert.equal(result.result, true);
+                assert.equal(env.http.calls.length, 2);
+                const body = env.http.calls[1].body;
+                assert.equal(body.model, model);
+                assert.equal('reasoning_effort' in body, reasoningMode === 'disabled');
+                if (reasoningMode === 'disabled') assert.equal(body.reasoning_effort, 'none');
+                assert.ok(!('thinking' in body));
+            } finally {
+                clearEnv();
+            }
+        });
+    }
+}
+
+for (const response of [
+    { response: { statusCode: 400 }, data: { error: { message: 'unsupported reasoning_effort' } } },
+    { response: { statusCode: 200 }, data: { error: { message: 'unsupported reasoning_effort' } } },
+    { response: { statusCode: 200 }, data: { choices: [] } }
+]) {
+    test('pluginValidate：实验模式异常响应不得误报通过或自动重发 / ' + JSON.stringify(response), () => {
+        const env = setup({ reasoningMode: 'disabled' }, (opts) => {
+            if (opts.method === 'GET') opts.handler({ response: { statusCode: 200 }, data: {
+                object: 'list', data: [{ id: 'deepseek-v4.1-flash' }]
+            } });
+            else opts.handler(response);
+        });
+        try {
+            let result;
+            require('../src/main.js').pluginValidate((value) => { result = value; });
+            assert.equal(result.result, false);
+            assert.ok(result.error);
+            assert.equal(env.http.calls.length, 2);
+            assert.equal(env.http.calls[1].body.reasoning_effort, 'none');
+        } finally {
+            clearEnv();
+        }
+    });
+}
+
+test('pluginValidate：两个阶段 handler 重复到达，也只发一个 Chat 请求且完成一次', () => {
+    const env = setup({ reasoningMode: 'disabled' }, (opts) => {
+        const response = { response: { statusCode: 200 }, data: opts.method === 'GET'
+            ? { object: 'list', data: [{ id: 'deepseek-v4.1-flash' }] }
+            : { choices: [{ message: { content: 'OK' } }] }
+        };
+        opts.handler(response);
+        opts.handler(response);
+    });
+    try {
+        let completions = 0;
+        require('../src/main.js').pluginValidate(() => { completions += 1; });
+        assert.equal(completions, 1);
+        assert.equal(env.http.calls.length, 2);
+    } finally {
+        clearEnv();
+    }
 });

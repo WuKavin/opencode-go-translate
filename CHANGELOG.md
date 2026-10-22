@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.1 (2026-10-22)
+
+- 应用户要求恢复 V4.1 Flash 的显式实验性关闭思考请求：选择 disabled 时发送 `reasoning_effort: "none"`，默认仍为 model_default。
+- 保留 V4 Pro 原有实验性选项；其他模型仍拒绝 disabled，不混发原生 thinking 字段，不自动重试或回退。
+- 插件验证同步携带所选思考参数；拒绝业务错误/异常 Chat 响应，防止误报成功；两阶段回调防重复发送和重复完成。
+- 新增 `npm run live:ab`：默认与 disabled 各一次流式 API 观测，须另行配置环境变量并授权真实用量。
+- 作为试用预发布版发布；尚未做真实 API 或 Bob 实机验收，不承诺参数生效或速度提升。v1.1.0 历史包保留。
+
 ## 1.1.0 (2026-10-22)
 
 - 更新为 Go 当前 `/inference/go/openai/v1/chat/completions` 与 `/inference/go/v1/models`。

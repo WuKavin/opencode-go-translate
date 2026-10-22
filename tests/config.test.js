@@ -91,8 +91,8 @@ test('validateConfig：Chat Completions 全部 allowlist 模型通过', () => {
     }
 });
 
-test('validateConfig：disabled 仅保留 DeepSeek V4 Pro，不推断 V4.1 支持', () => {
-    assert.equal(config.validateConfig(baseConfig({ reasoningMode: 'disabled', model: 'deepseek-v4.1-flash' })).type, 'param');
+test('validateConfig：disabled 允许 V4.1 Flash 与 V4 Pro 的实验性请求', () => {
+    assert.equal(config.validateConfig(baseConfig({ reasoningMode: 'disabled', model: 'deepseek-v4.1-flash' })), null);
     assert.equal(config.validateConfig(baseConfig({ reasoningMode: 'disabled', model: 'deepseek-v4-pro' })), null);
     const err = config.validateConfig(baseConfig({ reasoningMode: 'disabled', model: 'glm-5.3-flash' }));
     assert.ok(err);
@@ -131,7 +131,7 @@ test('validateConfig：合法 sessionId 留空均可', () => {
 test('isChatCompletionsModel / isReasoningDisableModel', () => {
     assert.equal(config.isChatCompletionsModel('deepseek-v4-flash-vision-exp'), false);
     assert.equal(config.isReasoningDisableModel('deepseek-v4-flash'), false);
-    assert.equal(config.isReasoningDisableModel('deepseek-v4.1-flash'), false);
+    assert.equal(config.isReasoningDisableModel('deepseek-v4.1-flash'), true);
     assert.equal(config.isReasoningDisableModel('deepseek-v4-pro'), true);
     assert.equal(config.isReasoningDisableModel('glm-5.3'), false);
 });

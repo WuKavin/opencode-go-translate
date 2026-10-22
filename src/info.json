@@ -1,6 +1,6 @@
 {
     "identifier": "com.local.bob.translate.opencodogo",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "category": "translate",
     "name": "OpenCode Go 翻译",
     "summary": "使用你自己的 OpenCode Go API Key（BYOK）调用大模型完成文本翻译。仅限账户持有人本机使用。",
@@ -47,11 +47,11 @@
             "identifier": "reasoningMode",
             "type": "menu",
             "title": "思考模式",
-            "desc": "仅对 DeepSeek V4 Pro 保留实验性 reasoning_effort: none。新 V4.1 Flash 尚未确认该参数，请使用模型默认行为；不能保证关闭内部推理。",
+            "desc": "可对 DeepSeek V4.1 Flash / V4 Pro 实验性发送 reasoning_effort: none。V4.1 尚未实测，不保证参数生效或提速；拒绝时不自动重试，请手动改回模型默认行为。",
             "defaultValue": "model_default",
             "menuValues": [
                 { "title": "使用模型默认行为", "value": "model_default" },
-                { "title": "请求关闭思考（实验性，仅 DeepSeek V4 Pro）", "value": "disabled" }
+                { "title": "请求关闭思考（实验性，V4.1 Flash / V4 Pro）", "value": "disabled" }
             ]
         },
         {

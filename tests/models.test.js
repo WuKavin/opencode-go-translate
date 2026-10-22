@@ -16,7 +16,7 @@ test('模型目录：菜单、默认值、allowlist 与插件版本保持一致'
     assert.deepEqual(config.CHAT_COMPLETIONS_MODELS, models.ids);
     assert.equal(config.DEFAULTS.model, 'deepseek-v4.1-flash');
     assert.equal(config.DEFAULTS.reasoningMode, 'model_default');
-    assert.equal(request.buildUserAgent(info.version), 'Bob-OpenCode-Go-Translate/1.1.0 (Bob Plugin; macOS)');
+    assert.equal(request.buildUserAgent(info.version), 'Bob-OpenCode-Go-Translate/' + require('../package.json').version + ' (Bob Plugin; macOS)');
 });
 
 test('模型目录：菜单漂移、默认值漂移、版本漂移均使本地检查失败', () => {
@@ -84,12 +84,12 @@ test('请求：新模型保持原始 ID，新 Flash 默认不携带未经确认�
     assert.ok(!('reasoning_effort' in body));
 });
 
-test('思考模式：新 Flash 不继承旧模型的 disabled 能力', () => {
+test('思考模式：V4.1 仅显式选择 disabled 时允许实验性请求，默认不变', () => {
     const opts = config.readOptions({ apiKey: 'test-placeholder', model: models.defaultModel, reasoningMode: 'disabled' }, info.version);
     const error = config.validateConfig(opts);
-    assert.equal(error.type, 'param');
-    assert.match(error.message, /尚未确认/);
-    assert.deepEqual(config.REASONING_DISABLE_MODELS, ['deepseek-v4-pro']);
+    assert.equal(error, null);
+    assert.equal(config.DEFAULTS.reasoningMode, 'model_default');
+    assert.deepEqual(config.REASONING_DISABLE_MODELS, ['deepseek-v4.1-flash', 'deepseek-v4-pro']);
 });
 
 test('只读检查：基线快照无差异', () => {

@@ -88,7 +88,7 @@ function validateConfig(config, rawUserSessionId) {
     }
     if (config.reasoningMode === 'disabled' && !isReasoningDisableModel(config.model)) {
         return errors.paramError(
-            '「请求关闭思考」当前仅对 DeepSeek V4 Pro 保留实验性支持，DeepSeek V4.1 Flash 等模型尚未确认该参数。当前模型为「' +
+            '「请求关闭思考」仅允许 DeepSeek V4.1 Flash / V4 Pro 的实验性请求，当前模型为「' +
             config.model + '」，请将思考模式设为「使用模型默认行为」。'
         );
     }

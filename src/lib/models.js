@@ -1,6 +1,6 @@
 // Go 协议映射与线上模型列表核对于 2026-10-22；运行时不自动采纳未知模型。
 var catalog = [
-    { id: 'deepseek-v4.1-flash', title: 'DeepSeek V4.1 Flash' },
+    { id: 'deepseek-v4.1-flash', title: 'DeepSeek V4.1 Flash', disableReasoning: true },
     { id: 'deepseek-v4-pro', title: 'DeepSeek V4 Pro', disableReasoning: true },
     { id: 'glm-5.3-flash', title: 'GLM 5.3 Flash' },
     { id: 'glm-5.3', title: 'GLM 5.3' },

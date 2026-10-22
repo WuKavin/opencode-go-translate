@@ -1,6 +1,6 @@
 {
     "name": "opencode-go-translate",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "private": true,
     "description": "Bob 插件：使用你自己的 OpenCode Go API Key 调用大模型完成文本翻译（BYOK）",
     "license": "MIT",
@@ -15,7 +15,8 @@
         "models:check-local": "node scripts/check-models.js --local",
         "package": "bash scripts/package.sh",
         "checksum": "bash scripts/checksum.sh",
-        "live:test": "node scripts/live-test.js"
+        "live:test": "node scripts/live-test.js",
+        "live:ab": "node scripts/live-test.js --ab"
     },
     "engines": {
         "node": ">=18"

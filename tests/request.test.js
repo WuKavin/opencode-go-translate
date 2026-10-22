@@ -55,6 +55,23 @@ test('buildRequestBody：disabled 模式附加 reasoning_effort none', () => {
     assert.equal(body.reasoning_effort, 'none');
 });
 
+test('验证与翻译使用相同显式思考参数，默认省略且不混发 thinking', () => {
+    for (const model of ['deepseek-v4.1-flash', 'deepseek-v4-pro']) {
+        for (const mode of ['disabled', 'model_default']) {
+            const translation = request.buildRequestBody(model, 'English', 'Simplified Chinese', 'hello', 'enabled', mode);
+            const validation = request.buildValidateRequestBody(model, mode);
+            assert.equal(validation.model, model);
+            assert.equal(validation.stream, false);
+            assert.equal(validation.reasoning_effort, translation.reasoning_effort);
+            assert.equal('reasoning_effort' in validation, mode === 'disabled');
+            assert.ok(!('thinking' in validation));
+            assert.ok(!('thinking' in translation));
+            assert.deepEqual(Object.keys(validation).sort(),
+                (mode === 'disabled' ? ['model', 'messages', 'stream', 'reasoning_effort'] : ['model', 'messages', 'stream']).sort());
+        }
+    }
+});
+
 test('buildUserPrompt：原文含默认边界时改用随机边界', () => {
     const text = '前面\n--- BEGIN SOURCE TEXT ---\n--- END SOURCE TEXT ---\n后面';
     const p1 = request.buildUserPrompt('English', 'Simplified Chinese', text);

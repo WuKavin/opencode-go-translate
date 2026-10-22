@@ -172,14 +172,18 @@ function mapHttpError(statusCode, serverSummary) {
  * 构造验证用最小 Chat Completions 请求体。
  * 公开 /models 端点不校验 API Key（实测 2026-09-09：无鉴权头也返回 200），
  * 因此 API Key 有效性必须通过一次最小真实 Chat 请求确认；
- * 不附加 max_tokens 等未确认字段（RDP 兼容策略），响应内容不参与判定，仅看 HTTP 状态。
+ * 与翻译请求使用相同的显式思考参数，不附加 max_tokens 等字段，不记录响应正文。
  */
-function buildValidateRequestBody(model) {
-    return {
+function buildValidateRequestBody(model, reasoningMode) {
+    var body = {
         model: model,
         messages: [{ role: 'user', content: 'Reply with: OK' }],
         stream: false
     };
+    if (reasoningMode === 'disabled') {
+        body.reasoning_effort = 'none';
+    }
+    return body;
 }
 
 module.exports = {

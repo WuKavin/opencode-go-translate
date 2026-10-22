@@ -16,10 +16,16 @@
 ## 安装
 
 1. 在 [https://opencode.ai/auth](https://opencode.ai/auth) 登录并订阅 Go，复制 API Key
-2. 从 [v1.1.0 预发布页面](https://github.com/WuKavin/opencode-go-translate/releases/tag/v1.1.0)下载 `opencode-go-translate.bobplugin`，双击安装（尚待 Bob 实机验收）
+2. 从 [v1.1.1 试用页面](https://github.com/WuKavin/opencode-go-translate/releases/tag/v1.1.1)下载 `opencode-go-translate.bobplugin`，双击安装（尚待 Bob 实机验收）
 3. 打开 Bob 偏好设置 → 插件 → OpenCode Go 翻译，粘贴 API Key
 4. 选择 **DeepSeek V4.1 Flash**，思考模式选 **使用模型默认行为**
 5. 点击「验证」确认配置可用（验证会先检查模型列表，再发起一次最小真实请求以确认 API Key 和模型访问权限，消耗少量额度）
+
+### 试用 V4.1 Flash 的实验性关闭思考
+
+在思考模式中手动选择 **请求关闭思考（实验性，V4.1 Flash / V4 Pro）**，再点击验证。验证和翻译都会携带 `reasoning_effort: "none"`；默认选项仍不发送该字段，也不会同时发送原生 `thinking` 参数。
+
+这只是恢复插件的显式尝试能力，**不是证实 Go 已支持该参数**。HTTP 200、验证成功或未返回推理字段，均不能证明完全关闭内部思考或必然提速。参数被拒绝时不自动重试或回退，请手动改回「使用模型默认行为」。建议使用同一段不敏感短文本对比译文首包等待、总耗时和完整性。
 
 ### 从 v1.0.x 升级
 
@@ -35,7 +41,7 @@
 |---|---|
 | API Key | OpenCode Go API Key，必填，仅保存在 Bob 偏好设置中 |
 | 模型 | 仅列出走 Chat Completions 协议的模型（见下） |
-| 思考模式 | 「请求关闭思考（实验性，仅 DeepSeek V4 Pro）」或「使用模型默认行为」；V4.1 Flash 尚未确认关闭参数 |
+| 思考模式 | 显式对 V4.1 Flash / V4 Pro 实验性发送 `reasoning_effort: none`，或使用模型默认行为；V4.1 效果尚未实测 |
 | 流式输出 | 开启后译文逐步显示（默认开启） |
 | 请求超时 | 30 / 60 / 120 秒 |
 | Session ID | 留空自动生成并保存在插件沙盒；也可自定义（`[A-Za-z0-9._:-]{8,128}`） |
@@ -67,11 +73,12 @@ Go 与 Go Plus 的额度、模型价格及限额会变化，实际消耗取决�
 
 ## 「请求关闭思考」（实验性）
 
-选择 `disabled` 时，本版仅对 **DeepSeek V4 Pro** 发送 `reasoning_effort: "none"`：
+选择 `disabled` 时，本版允许对 **DeepSeek V4.1 Flash / V4 Pro** 实验性发送 `reasoning_effort: "none"`：
 
 - 该参数来自 OpenCode 仓库 Issue 反馈（[anomalyco/opencode#46178](https://github.com/anomalyco/opencode/issues/46178)），**不是正式 Go API 契约**；
 - 不保证服务端完全不产生内部推理；即使响应不含 `reasoning_content` 也不能证明；
-- 不把 V4 的社区反馈自动推广至 V4.1。对 V4.1 Flash 和其他模型选择该选项会返回明确参数错误，请改为「使用模型默认行为」。
+- v1.1.1 应用户要求取消了插件对 V4.1 的主动禁用，但不把旧 V4 的社区反馈当作 V4.1 已生效的证明。其他模型选择 disabled 仍返回参数错误。
+- 配置验证会使用相同思考参数，并检查正常 Chat 响应；仍不代表服务端一定采用该参数。
 
 ## 开发
 
@@ -83,6 +90,7 @@ npm run models:check # 只读检查官方协议表与公开模型列表，不使
 npm run package   # 打包 dist/opencode-go-translate.bobplugin 并复制到 ~/Downloads
 npm run checksum  # 生成 SHA-256
 npm run live:test # 显式付费 API 测试：V4.1 Flash 默认思考，流式/非流式各 5 次
+npm run live:ab   # 显式付费 A/B：V4.1 Flash 流式默认/disabled 各 1 次（共 2 次）
 ```
 
 插件运行于 Bob 内置 JavaScriptCore，源码不使用 Node API、fetch、DOM、`?.`/`??` 等 API 与语法。
@@ -90,6 +98,8 @@ npm run live:test # 显式付费 API 测试：V4.1 Flash 默认思考，流式/�
 模型唯一目录为 `src/lib/models.js`；修改后同步 `info.json` 菜单，本地检查和打包会阻止不一致的目录发布。在线检查发现上游缺失、新增或协议变化时以非零状态退出，仅报告差异，**不会自动改写模型或静默扩展协议支持**。尚未配置定时检查。
 
 Live Test 仅从本地环境变量 `OPENCODE_GO_API_KEY` 读取 Key，请勿把 Key 写入代码或命令示例。记录真实 HTTP 状态、流式 TTFT、完成标志及 reasoning 字段观测，不保存原文/译文；非流式 TTFT 无法测得时记为 null。非空不等于译文语义完整，仍须人工验收。打包会保留旧包备份，验收前不要删除。
+
+`live:ab` 的每个模式只有一个样本，输出 `dist/live-ab-results.json`；仅供初步观测，不是性能统计。当前未配置测试 Key，未实际运行付费 A/B。
 
 ## 已知限制
 

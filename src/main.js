@@ -426,15 +426,23 @@ function doStreamRequest(query, st, finish, opts, headers, body, resolved, http)
  *   阶段一 GET /models —— 仅作模型存在性与协议检查（该端点当前不校验 API Key，
  *   带无效 Key 也会返回 200，实测 2026-09-09），不能用于确认鉴权；
  *   阶段二 POST /chat/completions —— 发送最小真实请求确认 API Key 与模型访问权限，
- *   该请求会消耗少量额度（不附加 max_tokens 等未确认字段，响应内容不参与判定）。
+ *   该请求会消耗少量额度；携带所选实验性思考参数，并检查正常 Chat 响应，不记录正文。
  * 验证顺序：API Key → 模型 allowlist → sessionId 格式 → disabled 组合 → /models 检查 → Chat 请求鉴权检查。
  * 注意：/models 返回模型存在不代表该模型支持 Chat Completions，transport 仍以静态映射为准。
  */
 function pluginValidate(completion) {
     var opts = config.readOptions(bobOption(), pluginVersion());
+    var completed = false;
+    var modelsHandled = false;
+
+    function finish(payload) {
+        if (completed) return;
+        completed = true;
+        completion(payload);
+    }
 
     function fail(error) {
-        completion({
+        finish({
             result: false,
             error: error
         });
@@ -472,6 +480,8 @@ function pluginValidate(completion) {
         header: headers,
         timeout: opts.requestTimeout,
         handler: function (resp) {
+            if (modelsHandled) return;
+            modelsHandled = true;
             if (resp && resp.error) {
                 fail(errors.networkError('网络请求失败：' + errors.redact(resp.error.message || '')));
                 return;
@@ -505,7 +515,7 @@ function pluginValidate(completion) {
                 ));
                 return;
             }
-            validateKeyWithChatRequest(http, opts, sessionResult.sessionId, fail, completion);
+            validateKeyWithChatRequest(http, opts, sessionResult.sessionId, fail, finish);
         }
     });
 }
@@ -514,6 +524,7 @@ function pluginValidate(completion) {
  * 阶段二：最小 Chat Completions 请求验证 API Key（假 Key 在此才会被 401 拒绝）。
  */
 function validateKeyWithChatRequest(http, opts, sessionId, fail, completion) {
+    var handled = false;
     http.request({
         method: 'POST',
         url: request.CHAT_COMPLETIONS_URL,
@@ -523,9 +534,11 @@ function validateKeyWithChatRequest(http, opts, sessionId, fail, completion) {
             opts.pluginVersion,
             'application/json'
         ),
-        body: request.buildValidateRequestBody(opts.model),
+        body: request.buildValidateRequestBody(opts.model, opts.reasoningMode),
         timeout: opts.requestTimeout,
         handler: function (resp) {
+            if (handled) return;
+            handled = true;
             if (resp && resp.error) {
                 fail(errors.networkError('网络请求失败：' + errors.redact(resp.error.message || '')));
                 return;
@@ -533,6 +546,11 @@ function validateKeyWithChatRequest(http, opts, sessionId, fail, completion) {
             var status = statusOf(resp);
             if (status < 200 || status >= 300) {
                 fail(request.mapHttpError(status, errors.summarizePayload(resp ? resp.data : null)));
+                return;
+            }
+            var parsed = request.parseNonStreamResponse(resp ? resp.data : null);
+            if (parsed.error) {
+                fail(parsed.error);
                 return;
             }
             completion({ result: true });

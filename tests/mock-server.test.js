@@ -72,6 +72,10 @@ function createMockServer() {
             }
 
             switch (scenario) {
+                case '400':
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: { message: 'unsupported reasoning_effort' } }));
+                    break;
                 case '401':
                     res.writeHead(401, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ error: { message: 'invalid api key' } }));
@@ -430,3 +434,31 @@ test('Mock 集成：非流式取消终止底层请求（服务端断开连接、
         // （此处 signal 同时被模拟的 Bob 传输层订阅，订阅计数不归插件管理）
     });
 });
+
+test('Mock 集成：V4.1 实验关闭模式在验证请求中确实收到 none', async () => {
+    await withMock(async ({ mock }) => {
+        global.$option.reasoningMode = 'disabled';
+        mock.setScenario('ok-json');
+        const result = await new Promise((resolve) => require('../src/main.js').pluginValidate(resolve));
+        assert.equal(result.result, true);
+        assert.equal(mock.requests.length, 2);
+        assert.equal(mock.requests[1].body.reasoning_effort, 'none');
+        assert.equal(mock.requests[1].body.model, 'deepseek-v4.1-flash');
+        assert.equal(mock.requests[1].body.stream, false);
+        assert.ok(!('thinking' in mock.requests[1].body));
+    });
+});
+
+for (const status of ['400', '401']) {
+    test('Mock 集成：V4.1 实验验证拒绝 ' + status + ' 后不重试、不改回默认参数', async () => {
+        await withMock(async ({ mock }) => {
+            global.$option.reasoningMode = 'disabled';
+            mock.setScenario(status);
+            const result = await new Promise((resolve) => require('../src/main.js').pluginValidate(resolve));
+            assert.equal(result.result, false);
+            assert.equal(result.error.type, status === '401' ? 'secretKey' : 'network');
+            assert.equal(mock.requests.length, 2);
+            assert.equal(mock.requests[1].body.reasoning_effort, 'none');
+        });
+    });
+}

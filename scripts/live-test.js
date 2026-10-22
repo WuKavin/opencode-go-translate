@@ -21,10 +21,10 @@ function observePayload(payload, record) {
     return typeof text === 'string' ? text : '';
 }
 
-async function observeOnce(apiKey, sessionId, stream) {
+async function observeOnce(apiKey, sessionId, stream, reasoningMode = 'model_default', send = fetch) {
     const startedAt = Date.now();
     const record = {
-        stream, reasoningMode: 'model_default', httpStatus: null, ttftMs: null,
+        stream, reasoningMode, httpStatus: null, ttftMs: null,
         totalMs: null, reasoningObserved: false, finishReason: null,
         doneMarker: false, nonEmptyTranslation: false, normalCompletion: false, error: null
     };
@@ -32,12 +32,12 @@ async function observeOnce(apiKey, sessionId, stream) {
     const timeout = setTimeout(() => controller.abort(), 120000);
     let text = '';
     try {
-        const response = await fetch(models.chatUrl, {
+        const response = await send(models.chatUrl, {
             method: 'POST',
             headers: request.buildHeaders(apiKey, sessionId, info.version, stream ? 'text/event-stream' : 'application/json'),
             body: JSON.stringify(request.buildRequestBody(models.defaultModel, 'English', 'Simplified Chinese',
                 'The quick brown fox jumps over the lazy dog.\n\nIt costs $20 to renew the license.',
-                stream ? 'enabled' : 'disabled', 'model_default')),
+                stream ? 'enabled' : 'disabled', reasoningMode)),
             redirect: 'error', signal: controller.signal
         });
         record.httpStatus = response.status;
@@ -87,6 +87,12 @@ async function observeOnce(apiKey, sessionId, stream) {
     return record;
 }
 
+function scenarios(ab) {
+    return ab
+        ? [{ stream: true, reasoningMode: 'model_default', runs: 1 }, { stream: true, reasoningMode: 'disabled', runs: 1 }]
+        : [{ stream: true, reasoningMode: 'model_default', runs: 5 }, { stream: false, reasoningMode: 'model_default', runs: 5 }];
+}
+
 async function main() {
     const apiKey = (process.env.OPENCODE_GO_API_KEY || '').trim();
     if (!apiKey) {
@@ -96,17 +102,18 @@ async function main() {
     }
     const rows = [];
     const sessionId = generateSessionId();
-    console.log('付费 API 测试：' + models.defaultModel + '，model_default，流式/非流式各 5 次。');
-    console.log('V4.1 的 disabled 参数未确认，本脚本不会发送；此测试不替代 Bob 实机验收。');
-    for (const stream of [true, false]) {
-        for (let run = 1; run <= 5; run++) {
-            const record = await observeOnce(apiKey, sessionId, stream);
+    const ab = process.argv.includes('--ab');
+    console.log('付费 API 测试：' + models.defaultModel + (ab ? '，流式 model_default / disabled 各 1 次（共 2 次）。' : '，model_default，流式/非流式各 5 次。'));
+    console.log('disabled 仅是实验性请求，不保证生效或提速；此测试不替代 Bob 实机验收。');
+    for (const scenario of scenarios(ab)) {
+        for (let run = 1; run <= scenario.runs; run++) {
+            const record = await observeOnce(apiKey, sessionId, scenario.stream, scenario.reasoningMode);
             rows.push({ run, ...record });
             console.log(JSON.stringify({ run, ...record }));
             await new Promise((resolve) => setTimeout(resolve, 1200));
         }
     }
-    const output = path.join(__dirname, '..', 'dist', 'live-test-results.json');
+    const output = path.join(__dirname, '..', 'dist', ab ? 'live-ab-results.json' : 'live-test-results.json');
     fs.mkdirSync(path.dirname(output), { recursive: true });
     fs.writeFileSync(output, JSON.stringify({
         timestamp: new Date().toISOString(), version: info.version, model: models.defaultModel,
@@ -122,4 +129,4 @@ if (require.main === module) main().catch(() => {
     process.exitCode = 1;
 });
 
-module.exports = { observePayload };
+module.exports = { observePayload, observeOnce, scenarios };
